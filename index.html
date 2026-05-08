@@ -811,7 +811,7 @@ async function handlePDF(input) {
   reader.onload=async e=>{
     const b64=e.target.result.split(',')[1];
     try {
-      const res=await fetch('https://api.anthropic.com/v1/messages',{
+      const res=await fetch('https://finanzaspersonales.camiloquintero77.workers.dev/',{
         method:'POST',
         headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01'},
         body:JSON.stringify({model:'claude-opus-4-5',max_tokens:2000,messages:[{role:'user',content:[
