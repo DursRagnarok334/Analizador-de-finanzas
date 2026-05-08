@@ -253,8 +253,6 @@ tr:last-child td { border-bottom: none; }
       <div class="nav-item" onclick="nav('ahorro',this)"><span class="nav-icon">◎</span> Ahorro</div>
       <div class="nav-item" onclick="nav('deudas',this)"><span class="nav-icon">⚡</span> Deudas</div>
       <div class="nav-item" onclick="nav('fondo',this)"><span class="nav-icon">⬡</span> Fondo emergencias</div>
-      <div class="nav-section">Análisis</div>
-      <div class="nav-item" onclick="nav('extractos',this)"><span class="nav-icon">⊞</span> Análisis de extractos</div>
     </div>
     <div class="sidebar-footer">
       <div class="fb-box">
@@ -429,28 +427,6 @@ tr:last-child td { border-bottom: none; }
         <button class="btn primary" onclick="addFondo()">+ Agregar aporte</button>
       </div>
       <div class="card"><div class="card-title">Estado del fondo</div><div id="fondo-st"><div class="empty">Define tu meta primero</div></div></div>
-    </div>
-
-    <!-- EXTRACTOS -->
-    <div class="page" id="page-extractos">
-      <div class="page-header">
-        <div class="page-title">Análisis de extractos</div>
-        <div class="page-subtitle">Sube tu extracto bancario PDF para análisis automático con IA</div>
-      </div>
-      <div class="alert warn" id="ext-warn" style="display:none">
-        Configura tu API key de Anthropic en index.html para activar esta función. Ver GUIA_CONFIGURACION.md → Paso 2.
-      </div>
-      <div class="card">
-        <div class="card-title">Cargar extracto PDF</div>
-        <div class="upload-area" onclick="document.getElementById('pdfInput').click()">
-          <input type="file" id="pdfInput" accept=".pdf" onchange="handlePDF(this)">
-          <div style="font-size:32px;margin-bottom:12px;opacity:0.4">⊞</div>
-          <div style="font-size:14px;color:var(--text2);margin-bottom:4px">Haz clic para seleccionar tu extracto</div>
-          <div style="font-size:12px;color:var(--text3)">Formato PDF · Máx. 10 MB</div>
-        </div>
-        <div id="pdf-st" style="margin-top:12px"></div>
-      </div>
-      <div id="analysis-box"></div>
     </div>
 
   </main>
@@ -795,97 +771,6 @@ function renderCharts(ing,gast) {
   const ctx2=document.getElementById('chartB').getContext('2d');
   if(charts.b) charts.b.destroy();
   charts.b=new Chart(ctx2,{type:'bar',data:{labels:['Ingresos','Gastos','Balance'],datasets:[{data:[ing,gast,ing-gast],backgroundColor:['rgba(76,175,125,.7)','rgba(224,90,90,.7)',ing-gast>=0?'rgba(90,158,224,.7)':'rgba(224,90,90,.7)'],borderRadius:6,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#5a5855',callback:v=>'$'+Math.round(v/1000)+'k'}},x:{grid:{display:false},ticks:{color:'#8a8680'}}}}});
-}
-
-// ── PDF ──
-async function handlePDF(input) {
-  const file = input.files[0]; if(!file) return;
-  const st = document.getElementById('pdf-st');
-  document.getElementById('analysis-box').innerHTML = '';
-
-  if(file.size > 10 * 1024 * 1024) {
-    st.innerHTML = '<div class="alert danger">El archivo supera 10MB. Usa un extracto más liviano.</div>';
-    return;
-  }
-
-  st.innerHTML = '<div class="alert info"><span class="spin">⟳</span> Leyendo PDF...</div>';
-
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const b64 = e.target.result.split(',')[1];
-    st.innerHTML = '<div class="alert info"><span class="spin">⟳</span> Analizando con IA... puede tomar 20-30 segundos</div>';
-    try {
-      const payload = {
-        model: 'claude-opus-4-5',
-        max_tokens: 2000,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 }},
-            { type: 'text', text: `Analiza este extracto bancario colombiano. Responde SOLO con JSON válido, sin markdown ni texto adicional:
-{"banco":"","periodo":"","resumen":{"totalIngresos":0,"totalEgresos":0,"saldoFinal":0},"categorias":[{"nombre":"","total":0,"cantidad":0}],"topGastos":[{"descripcion":"","monto":0,"fecha":""}],"recomendaciones":[],"alertas":[]}
-Categorías: Alimentación, Vivienda, Transporte, Educación, Salud, Servicios, Entretenimiento, Transferencias, Retiros, Otros.`}
-          ]
-        }]
-      };
-
-      console.log('Enviando al worker, tamaño payload:', JSON.stringify(payload).length);
-
-      const res = await fetch('https://finanzaspersonales.camiloquintero77.workers.dev/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      console.log('Status worker:', res.status);
-      const text = await res.text();
-      console.log('Respuesta worker:', text.substring(0, 200));
-
-      if(!res.ok) {
-        st.innerHTML = `<div class="alert danger">Error ${res.status}: ${text.substring(0, 100)}</div>`;
-        return;
-      }
-
-      const d = JSON.parse(text);
-      const r = JSON.parse(d.content[0].text.replace(/```json|```/g,'').trim());
-      showAnalysis(r);
-      st.innerHTML = '<div class="alert success">✓ Análisis completado</div>';
-    } catch(err) {
-      console.error('Error completo:', err);
-      st.innerHTML = `<div class="alert danger">Error: ${err.message}</div>`;
-    }
-  };
-  reader.onerror = () => {
-    st.innerHTML = '<div class="alert danger">Error al leer el PDF.</div>';
-  };
-  reader.readAsDataURL(file);
-}
-
-function showAnalysis(r) {
-  const rJSON=JSON.stringify(r).replace(/'/g,'&#39;');
-  document.getElementById('analysis-box').innerHTML=`
-    <div class="card">
-      <div class="card-title">${r.banco||'Banco'} · ${r.periodo||''}</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
-        <div class="metric-card"><div class="metric-label">Ingresos</div><div class="metric-value green">${fmt(r.resumen?.totalIngresos)}</div></div>
-        <div class="metric-card"><div class="metric-label">Egresos</div><div class="metric-value red">${fmt(r.resumen?.totalEgresos)}</div></div>
-        <div class="metric-card"><div class="metric-label">Saldo final</div><div class="metric-value blue">${fmt(r.resumen?.saldoFinal)}</div></div>
-      </div>
-      <div class="card-title">Gastos por categoría</div>
-      ${(r.categorias||[]).map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><span>${c.nombre} <span style="color:var(--text3)">(${c.cantidad} movs.)</span></span><strong style="color:var(--red)">${fmt(c.total)}</strong></div>`).join('')}
-    </div>
-    ${(r.topGastos||[]).length?`<div class="card"><div class="card-title">Mayores gastos</div><table><thead><tr><th>Descripción</th><th>Fecha</th><th>Monto</th></tr></thead><tbody>${r.topGastos.map(g=>`<tr><td><strong>${g.descripcion}</strong></td><td>${g.fecha}</td><td><strong style="color:var(--red)">${fmt(g.monto)}</strong></td></tr>`).join('')}</tbody></table></div>`:''}
-    ${r.alertas?.length?`<div class="alert warn"><strong>Alertas:</strong> ${r.alertas.join(' · ')}</div>`:''}
-    ${r.recomendaciones?.length?`<div class="card"><div class="card-title">Recomendaciones IA</div>${r.recomendaciones.map(x=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;color:var(--text2)">→ ${x}</div>`).join('')}</div>`:''}
-    <button class="btn primary" style="margin-bottom:24px" onclick='importarExtracto(${rJSON})'>Importar gastos a mi registro</button>
-  `;
-}
-
-function importarExtracto(r) {
-  (r.categorias||[]).forEach(c=>{
-    if(c.total>0) S.gastos.push({id:uid(),desc:'Extracto · '+c.nombre,cat:c.nombre,tipo:'Variable',monto:c.total,fecha:hoy()});
-  });
-  renderGastos(); scheduleAutosave(); notify('Gastos importados desde el extracto','ok');
 }
 
 // ── Arranque ──
