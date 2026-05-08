@@ -813,7 +813,7 @@ async function handlePDF(input) {
     try {
       const res=await fetch('https://finanzaspersonales.camiloquintero77.workers.dev/',{
         method:'POST',
-        headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01'},
+        headers:{'Content-Type':'application/json'},
         body:JSON.stringify({model:'claude-opus-4-5',max_tokens:2000,messages:[{role:'user',content:[
           {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
           {type:'text',text:`Analiza este extracto bancario colombiano. Responde SOLO con JSON válido, sin markdown ni texto adicional:
