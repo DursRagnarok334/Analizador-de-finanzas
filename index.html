@@ -927,30 +927,31 @@ async function callGemini(prompt, intentos=3) {
     return d.candidates[0].content.parts[0].text;
   }
 }
-const prompt=`Eres consejero financiero experto. Analiza este perfil y genera un informe psicofinanciero en español con HTML simple (h4, p, ul, li).
-
+async function generarInforme(){
+  const btn=document.getElementById('btn-informe'),box=document.getElementById('informe-box');
+  btn.textContent='⟳ Generando...';btn.disabled=true;
+  box.innerHTML='<div class="empty"><span class="spin">⟳</span> Analizando tu perfil...</div>';
+  const ctx=buildCtx();
+  const prompt=`Eres consejero financiero experto. Analiza este perfil y genera un informe psicofinanciero en español con HTML simple (h4, p, ul, li).
 ${ctx}
-
 Secciones requeridas:
 <h4>Diagnóstico psicofinanciero</h4>
 <h4>Análisis ingresos y egresos</h4>
 <h4>Alertas</h4> (máx 2, en <div class="alerta">texto</div>)
 <h4>Plan de acción</h4> (3 consejos en <div class="consejo">texto</div>)
 <h4>Estrategia de inversión</h4>
-
 Sé conciso y específico con los números. Solo HTML, sin markdown.`;
   try{
     const r=await callGemini(prompt);
     chatHistory=[
-      {role:'user',parts:[{text:`Mi perfil financiero:\n${ctx}\n\nInforme generado:\n${r}`}]},
-      {role:'model',parts:[{text:'He analizado tu perfil completo. Estoy listo para responder tus preguntas.'}]}
+      {role:'user',parts:[{text:`Mi perfil:\n${ctx}\n\nInforme:\n${r}`}]},
+      {role:'model',parts:[{text:'He analizado tu perfil. Estoy listo para responder tus preguntas.'}]}
     ];
     box.innerHTML=`<div class="ia-informe">${r}</div>`;
     notify('Informe generado','ok');
   }catch(e){box.innerHTML=`<div class="alert danger">Error: ${e.message}</div>`;}
   btn.textContent='✦ Regenerar informe';btn.disabled=false;
 }
-
 async function enviarChat(){
   const input=document.getElementById('chat-in'),msg=input.value.trim();if(!msg)return;
   input.value='';
