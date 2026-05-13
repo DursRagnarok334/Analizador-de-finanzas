@@ -927,34 +927,18 @@ async function callGemini(prompt, intentos=3) {
     return d.candidates[0].content.parts[0].text;
   }
 }
-async function generarInforme(){
-  const btn=document.getElementById('btn-informe'),box=document.getElementById('informe-box');
-  btn.textContent='⟳ Generando...';btn.disabled=true;
-  box.innerHTML='<div class="empty"><span class="spin">⟳</span> Analizando tu perfil financiero...</div>';
-  const ctx=buildCtx();
-  const prompt=`Eres un consejero financiero y psicólogo financiero experto. Analiza este perfil y genera un informe psicofinanciero completo en español.
+const prompt=`Eres consejero financiero experto. Analiza este perfil y genera un informe psicofinanciero en español con HTML simple (h4, p, ul, li).
 
 ${ctx}
 
-Genera el informe en HTML simple con estas secciones (usa <h4> para títulos, <p> para párrafos, <ul><li> para listas):
-
+Secciones requeridas:
 <h4>Diagnóstico psicofinanciero</h4>
-Analiza su relación psicológica con el dinero basada en sus datos, hobbies y comportamiento.
+<h4>Análisis ingresos y egresos</h4>
+<h4>Alertas</h4> (máx 2, en <div class="alerta">texto</div>)
+<h4>Plan de acción</h4> (3 consejos en <div class="consejo">texto</div>)
+<h4>Estrategia de inversión</h4>
 
-<h4>Análisis de ingresos y egresos</h4>
-Evalúa su situación actual, tasa de ahorro real vs aspiracional, y distribución de gastos.
-
-<h4>Alertas financieras</h4>
-Máximo 3 alertas. Cada una en: <div class="alerta">texto</div>
-
-<h4>Fortalezas financieras</h4>
-Aspectos positivos de su gestión.
-
-<h4>Plan de acción personalizado</h4>
-5 consejos específicos. Cada uno en: <div class="consejo">texto</div>
-
-<h4>Estrategia de inversión sugerida</h4>
-Basada en tolerancia al riesgo y metas.
+Sé conciso y específico con los números. Solo HTML, sin markdown.`;
 
 Usa los números reales del perfil. Tono profesional pero cercano. Solo HTML, sin markdown.`;
   try{
