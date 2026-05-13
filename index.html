@@ -669,7 +669,7 @@ function defPerfil(){return{nombre:'',edad:'',ciudad:'',civil:'',dep:0,divisa:'C
 function initUI(){
   ['i-fecha','g-fecha','a-fecha','f-fecha','d-vence'].forEach(id=>setVal(id,hoy()));
   document.getElementById('dash-mes').textContent=new Date().toLocaleDateString('es-CO',{month:'long',year:'numeric'});
-  if(!GEMINI_KEY || GEMINI_KEY==='AIzaSyCcJ-uye7W7Py59-ZgOO3hfAVZwHKSI65A')document.getElementById('warn-gemini').style.display='block';
+  if(!GEMINI_KEY || GEMINI_KEY==='TU_GEMINI_API_KEY') document.getElementById('warn-gemini').style.display='block';
   updSym(); renderAll(); cargarPerfilUI();
 }
 function renderAll(){updateDash();renderIngresos();renderGastos();renderPres();renderAhorro();renderDeudas();renderFondo();}
@@ -903,7 +903,7 @@ HOBBIES: ${[...(p.hobbies||[]),p.hobOtros].filter(Boolean).join(', ')||'N/A'}
 CONTEXTO: ${p.contexto||'Ninguno'}`;
 }
 async function callGemini(prompt, intentos=3) {
-  if(GEMINI_KEY==='AIzaSyCcJ-uye7W7Py59-ZgOO3hfAVZwHKSI65A') throw new Error('Configura tu API key de Gemini');
+  if(!GEMINI_KEY || GEMINI_KEY==='TU_GEMINI_API_KEY') throw new Error('Configura tu API key de Gemini');
   for(let i=0; i<intentos; i++) {
     const res = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
       method: 'POST',
