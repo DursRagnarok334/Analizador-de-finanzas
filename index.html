@@ -38,7 +38,7 @@ window.dispatchEvent(new Event('firebaseReady'));
 ════════════════════════════════════════════════════════ -->
 <script>
 const GEMINI_KEY = 'AIzaSyCcJ-uye7W7Py59-ZgOO3hfAVZwHKSI65A';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent';
 </script>
 
 <style>
@@ -669,7 +669,7 @@ function defPerfil(){return{nombre:'',edad:'',ciudad:'',civil:'',dep:0,divisa:'C
 function initUI(){
   ['i-fecha','g-fecha','a-fecha','f-fecha','d-vence'].forEach(id=>setVal(id,hoy()));
   document.getElementById('dash-mes').textContent=new Date().toLocaleDateString('es-CO',{month:'long',year:'numeric'});
-  if(GEMINI_KEY==='AIzaSyCcJ-uye7W7Py59-ZgOO3hfAVZwHKSI65A')document.getElementById('warn-gemini').style.display='block';
+  if(!GEMINI_KEY || GEMINI_KEY==='AIzaSyCcJ-uye7W7Py59-ZgOO3hfAVZwHKSI65A')document.getElementById('warn-gemini').style.display='block';
   updSym(); renderAll(); cargarPerfilUI();
 }
 function renderAll(){updateDash();renderIngresos();renderGastos();renderPres();renderAhorro();renderDeudas();renderFondo();}
@@ -902,18 +902,31 @@ METAS:
 HOBBIES: ${[...(p.hobbies||[]),p.hobOtros].filter(Boolean).join(', ')||'N/A'}
 CONTEXTO: ${p.contexto||'Ninguno'}`;
 }
-
-async function callGemini(prompt){
-  if(GEMINI_KEY==='AIzaSyCcJ-uye7W7Py59-ZgOO3hfAVZwHKSI65A')throw new Error('Configura tu API key de Gemini');
-  const res=await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`,{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.7,maxOutputTokens:2048}})
-  });
-  if(!res.ok)throw new Error('Error Gemini '+res.status);
-  const d=await res.json();
-  return d.candidates[0].content.parts[0].text;
+async function callGemini(prompt, intentos=3) {
+  if(GEMINI_KEY==='AIzaSyCcJ-uye7W7Py59-ZgOO3hfAVZwHKSI65A') throw new Error('Configura tu API key de Gemini');
+  for(let i=0; i<intentos; i++) {
+    const res = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
+      })
+    });
+    if(res.status === 429) {
+      if(i < intentos-1) {
+        const espera = (i+1) * 15000;
+        notify(`Límite alcanzado, reintentando en ${espera/1000}s...`);
+        await new Promise(r => setTimeout(r, espera));
+        continue;
+      }
+      throw new Error('Límite de solicitudes alcanzado. Espera 1 minuto e intenta de nuevo.');
+    }
+    if(!res.ok) throw new Error('Error Gemini '+res.status);
+    const d = await res.json();
+    return d.candidates[0].content.parts[0].text;
+  }
 }
-
 async function generarInforme(){
   const btn=document.getElementById('btn-informe'),box=document.getElementById('informe-box');
   btn.textContent='⟳ Generando...';btn.disabled=true;
