@@ -904,7 +904,7 @@ CONTEXTO: ${p.contexto||'Ninguno'}`;
 }
 
 async function callGemini(prompt){
-  if(GEMINI_KEY==='TU_GEMINI_API_KEY')throw new Error('Configura tu API key de Gemini');
+  if(GEMINI_KEY==='AIzaSyCcJ-uye7W7Py59-ZgOO3hfAVZwHKSI65A')throw new Error('Configura tu API key de Gemini');
   const res=await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`,{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.7,maxOutputTokens:2048}})
