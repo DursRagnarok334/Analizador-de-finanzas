@@ -542,11 +542,11 @@ tr:last-child td{border-bottom:none;}
     <div class="page" id="page-consejeria">
       <div class="page-header">
         <div class="page-title">Consejería IA</div>
-        <div class="page-subtitle">Análisis psicofinanciero personalizado con Gemini</div>
+        <div class="page-subtitle">Análisis psicofinanciero personalizado con IA</div>
       </div>
 
-      <div class="alert warn" id="warn-gemini" style="display:none">
-        Configura tu API key de Gemini en index.html. Obtén una gratis en <strong>https://aistudio.google.com/app/apikey</strong>
+      <div class="alert warn" id="warn-groq" style="display:none">
+        Configura tu API key de Groq en index.html. Obtén una gratis en <strong>https://console.groq.com</strong>
       </div>
       <div class="alert info" id="warn-perfil" style="display:none">
         Completa tu perfil para obtener un análisis más personalizado.
@@ -669,7 +669,7 @@ function defPerfil(){return{nombre:'',edad:'',ciudad:'',civil:'',dep:0,divisa:'C
 function initUI(){
   ['i-fecha','g-fecha','a-fecha','f-fecha','d-vence'].forEach(id=>setVal(id,hoy()));
   document.getElementById('dash-mes').textContent=new Date().toLocaleDateString('es-CO',{month:'long',year:'numeric'});
-  if(!GEMINI_KEY || GEMINI_KEY==='TU_GEMINI_API_KEY') document.getElementById('warn-gemini').style.display='block';
+  if(!GROQ_KEY || GROQ_KEY==='gsk_TU_KEY_DE_GROQ') document.getElementById('warn-groq').style.display='block';
   updSym(); renderAll(); cargarPerfilUI();
 }
 function renderAll(){updateDash();renderIngresos();renderGastos();renderPres();renderAhorro();renderDeudas();renderFondo();}
@@ -865,7 +865,7 @@ function actualizarResumen(){
   document.getElementById('pr-tags').innerHTML=t.join('');
 }
 
-// ── GEMINI ──
+// ── GROQ ──
 function buildCtx(){
   const p=S.perfil;
   const ing=S.ingresos.reduce((a,i)=>a+i.monto,0),gast=S.gastos.reduce((a,g)=>a+g.monto,0);
@@ -902,7 +902,7 @@ METAS:
 HOBBIES: ${[...(p.hobbies||[]),p.hobOtros].filter(Boolean).join(', ')||'N/A'}
 CONTEXTO: ${p.contexto||'Ninguno'}`;
 }
-async function callGemini(prompt) {
+async function callGroq(prompt) {
   if(!GROQ_KEY || GROQ_KEY==='gsk_TU_KEY_DE_GROQ') throw new Error('Configura tu API key de Groq');
   const res = await fetch(GROQ_URL, {
     method: 'POST',
@@ -937,7 +937,7 @@ Secciones requeridas:
 <h4>Estrategia de inversión</h4>
 Sé conciso y específico con los números. Solo HTML, sin markdown.`;
   try{
-    const r=await callGemini(prompt);
+    const r=await callGroq(prompt);
     chatHistory=[
       {role:'user',parts:[{text:`Mi perfil:\n${ctx}\n\nInforme:\n${r}`}]},
       {role:'model',parts:[{text:'He analizado tu perfil. Estoy listo para responder tus preguntas.'}]}
@@ -957,30 +957,20 @@ async function enviarChat(){
   msgs.scrollTop=msgs.scrollHeight;
   chatHistory.push({role:'user',parts:[{text:msg}]});
   try{
-    const contents=chatHistory.length>2?chatHistory:[{role:'user',parts:[{text:`Contexto financiero:\n${buildCtx()}\n\nPregunta: ${msg}`}]}];
-    const res = await fetch(GROQ_URL, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer ' + GROQ_KEY
-  },
-  body: JSON.stringify({
-    model: 'llama-3.3-70b-versatile',
-    messages: chatHistory.map(m => ({
-      role: m.role === 'model' ? 'assistant' : m.role,
-      content: m.parts[0].text
-    })),
-    temperature: 0.7,
-    max_tokens: 1024
-  })
-});
-const d = await res.json();
-const r = d.choices[0].message.content;,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents,generationConfig:{temperature:0.7,maxOutputTokens:1024}})});
+    const messages = chatHistory.length>2
+      ? chatHistory.map(m=>({role:m.role==='model'?'assistant':m.role, content:m.parts[0].text}))
+      : [{role:'user',content:`Eres consejero financiero experto. Contexto:\n${buildCtx()}\n\nPregunta: ${msg}`}];
+    const res=await fetch(GROQ_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_KEY},
+      body:JSON.stringify({model:'llama-3.3-70b-versatile',messages,temperature:0.7,max_tokens:1024})
+    });
+    if(!res.ok) throw new Error('Error Groq '+res.status);
     const d=await res.json();
-    const r=d.candidates[0].content.parts[0].text;
+    const r=d.choices[0].message.content;
     chatHistory.push({role:'model',parts:[{text:r}]});
     document.getElementById(tid).outerHTML=`<div class="chat-msg ia">${r.replace(/\n/g,'<br>')}</div>`;
-  }catch(e){document.getElementById(tid).outerHTML=`<div class="chat-msg ia" style="color:var(--red)">Error al conectar con Gemini. Verifica tu API key.</div>`;}
+  }catch(e){document.getElementById(tid).outerHTML=`<div class="chat-msg ia" style="color:var(--red)">Error: ${e.message}</div>`;}
   msgs.scrollTop=msgs.scrollHeight;
 }
 
