@@ -679,6 +679,7 @@ tr:hover td { color: var(--text); }
         <div class="metric-card amber-accent"><div class="metric-label">Ahorro acumulado</div><div class="metric-value amber" id="m-aho">$0</div><div class="metric-delta neutral" id="d-aho"></div></div>
       </div>
       <div id="dash-alertas-resumen"></div>
+      <div id="dash-ciclo-pago"></div>
       <div class="card-grid">
         <div class="card"><div class="card-title">Gastos por categoría</div><div class="chart-wrap"><canvas id="chartG"></canvas></div></div>
         <div class="card"><div class="card-title">Ingresos vs Gastos</div><div class="chart-wrap"><canvas id="chartB"></canvas></div></div>
@@ -908,9 +909,14 @@ tr:hover td { color: var(--text); }
       </div>
       <div class="card">
         <div class="card-title">Perfil financiero</div>
-        <div class="form-row">
+        <div class="form-row c3">
           <div class="form-group"><label>Aspiración de ahorro (%)</label><input type="number" id="pf-asp" placeholder="20" min="0" max="100" inputmode="numeric"></div>
           <div class="form-group"><label>Tolerancia al riesgo</label><select id="pf-riesgo"><option value="">Seleccionar</option><option>Conservador</option><option>Moderado</option><option>Agresivo</option></select></div>
+          <div class="form-group">
+            <label>Día de pago mensual</label>
+            <input type="number" id="pf-dia-pago" placeholder="Ej: 30" min="1" max="31" inputmode="numeric">
+            <span style="font-size:11px;color:var(--text3);margin-top:3px">Día del mes en que recibes tu salario</span>
+          </div>
         </div>
         <div class="form-row c3">
           <div class="form-group"><label>Meta corto plazo (1 año)</label><input type="text" id="pf-mcp" placeholder="Ej: Fondo emergencias"></div>
@@ -1398,6 +1404,7 @@ function updateDash(){
     '<div class="empty" style="padding:14px">Configura tu fondo de emergencias</div>';
 
   renderCharts(cur.ing,cur.gast);
+  renderCicloPago();
 }
 
 function renderCharts(ing,gast){
@@ -1552,7 +1559,163 @@ function renderDashAdv(){
   deuEl.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px"><div style="background:var(--bg4);padding:12px;border-radius:8px"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Total deuda</div><div style="font-size:18px;font-weight:300;color:var(--red)">${fmtNum(totalD)}</div></div><div style="background:var(--bg4);padding:12px;border-radius:8px"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Cuotas/mes</div><div style="font-size:18px;font-weight:300;color:var(--amber)">${fmtNum(totalC)}</div></div></div>${S.deudas.map(d=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text2)">${d.nom}</span><strong style="color:var(--red)">${fmtNum(d.saldo)}</strong></div>`).join('')}`;
 }
 
-// ── ALERTAS ──
+// ── CICLO DE PAGO ──
+function calcularCicloPago(){
+  const diaPago = S.perfil.diaPago;
+  if(!diaPago || diaPago < 1 || diaPago > 31) return null;
+
+  const hoyDate = new Date();
+  const hoyNum  = hoyDate.getDate();
+  const mes     = hoyDate.getMonth();
+  const anio    = hoyDate.getFullYear();
+
+  // Calcular próximo día de pago
+  let proximoPago;
+  if(hoyNum < diaPago) {
+    proximoPago = new Date(anio, mes, diaPago);
+  } else {
+    proximoPago = new Date(anio, mes + 1, diaPago);
+  }
+  const diasHastaPago = Math.ceil((proximoPago - hoyDate) / (1000*60*60*24));
+
+  // Calcular último pago (inicio del ciclo actual)
+  let inicioCiclo;
+  if(hoyNum >= diaPago) {
+    inicioCiclo = new Date(anio, mes, diaPago);
+  } else {
+    inicioCiclo = new Date(anio, mes - 1, diaPago);
+  }
+  const diasDelCiclo = Math.ceil((proximoPago - inicioCiclo) / (1000*60*60*24));
+
+  // Ingresos del ciclo actual (desde último pago)
+  const ingCiclo = S.ingresos
+    .filter(i => i.fecha && new Date(i.fecha) >= inicioCiclo)
+    .reduce((a,i) => a+i.monto, 0);
+
+  // Gastos del ciclo actual
+  const gastCiclo = S.gastos
+    .filter(g => g.fecha && new Date(g.fecha) >= inicioCiclo)
+    .reduce((a,g) => a+g.monto, 0);
+
+  const disponible = ingCiclo - gastCiclo;
+  const diasTranscurridos = Math.ceil((hoyDate - inicioCiclo) / (1000*60*60*24));
+
+  // Tasa de gasto diaria histórica (últimos 3 meses)
+  const hace90 = new Date(); hace90.setDate(hace90.getDate() - 90);
+  const gastos90 = S.gastos.filter(g => g.fecha && new Date(g.fecha) >= hace90);
+  const totalGastos90 = gastos90.reduce((a,g) => a+g.monto, 0);
+  const tasaDiariaHistorica = totalGastos90 / 90;
+
+  // Tasa de gasto actual del ciclo
+  const tasaDiariaCiclo = diasTranscurridos > 0 ? gastCiclo / diasTranscurridos : 0;
+
+  // Usar la mayor tasa para ser conservador
+  const tasaDiaria = Math.max(tasaDiariaHistorica, tasaDiariaCiclo);
+
+  // Proyección de gasto hasta el próximo pago
+  const gastoProyectado = tasaDiaria * diasHastaPago;
+  const saldoProyectado = disponible - gastoProyectado;
+
+  // Porcentaje del ciclo transcurrido
+  const pctCiclo = Math.min((diasTranscurridos / diasDelCiclo) * 100, 100);
+
+  // Porcentaje del dinero gastado
+  const pctGastado = ingCiclo > 0 ? Math.min((gastCiclo / ingCiclo) * 100, 100) : 0;
+
+  // Nivel de alerta
+  let nivelAlerta = 'ok'; // ok, warn, danger
+  let mensajeAlerta = '';
+
+  if(ingCiclo === 0) {
+    nivelAlerta = 'info';
+    mensajeAlerta = 'Registra tus ingresos del ciclo para activar el análisis.';
+  } else if(saldoProyectado < 0) {
+    nivelAlerta = 'danger';
+    mensajeAlerta = `⚠ Proyección: te quedarás sin dinero antes del día ${diaPago}. Faltarán ${fmtNum(Math.abs(saldoProyectado))}.`;
+  } else if(pctGastado > pctCiclo + 20) {
+    nivelAlerta = 'danger';
+    mensajeAlerta = `⚠ Ritmo de gasto muy alto. Llevas el ${Math.round(pctCiclo)}% del ciclo pero gastaste el ${Math.round(pctGastado)}% del ingreso.`;
+  } else if(pctGastado > pctCiclo + 10) {
+    nivelAlerta = 'warn';
+    mensajeAlerta = `Cuidado: vas gastando más rápido de lo ideal. Disponible: ${fmtNum(disponible)} para ${diasHastaPago} días.`;
+  } else if(disponible < gastoProyectado * 0.3) {
+    nivelAlerta = 'warn';
+    mensajeAlerta = `Saldo ajustado para los ${diasHastaPago} días restantes. Proyección de ahorro: ${fmtNum(saldoProyectado)}.`;
+  } else {
+    mensajeAlerta = `Vas bien. Proyección de saldo al día ${diaPago}: ${fmtNum(saldoProyectado)}.`;
+  }
+
+  return {
+    diaPago, diasHastaPago, diasTranscurridos, diasDelCiclo,
+    ingCiclo, gastCiclo, disponible,
+    tasaDiaria, gastoProyectado, saldoProyectado,
+    pctCiclo, pctGastado,
+    nivelAlerta, mensajeAlerta,
+    proximoPago: proximoPago.toLocaleDateString('es-CO',{day:'numeric',month:'long'})
+  };
+}
+
+function renderCicloPago(){
+  const el = document.getElementById('dash-ciclo-pago');
+  if(!el) return;
+  const c = calcularCicloPago();
+  if(!c){ el.innerHTML=''; return; }
+
+  const colorNivel = c.nivelAlerta==='danger'?'var(--red)':c.nivelAlerta==='warn'?'var(--amber)':c.nivelAlerta==='info'?'var(--blue)':'var(--green)';
+  const bgNivel    = c.nivelAlerta==='danger'?'var(--red-bg)':c.nivelAlerta==='warn'?'var(--amber-bg)':c.nivelAlerta==='info'?'var(--blue-bg)':'var(--green-bg)';
+  const borderNivel= c.nivelAlerta==='danger'?'rgba(224,90,90,0.3)':c.nivelAlerta==='warn'?'rgba(212,164,56,0.3)':c.nivelAlerta==='info'?'rgba(90,158,224,0.3)':'rgba(76,175,125,0.3)';
+  const pctGastoBar = Math.min(c.pctGastado, 100);
+  const pctCicloBar = Math.min(c.pctCiclo, 100);
+  const colorGasto  = c.pctGastado > c.pctCiclo+20?'var(--red)':c.pctGastado > c.pctCiclo+10?'var(--amber)':'var(--green)';
+
+  el.innerHTML = `
+    <div class="card" style="border-color:${borderNivel};margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:0">Ciclo de pago — día ${c.diaPago}</div>
+        <span style="font-size:12px;color:var(--text3)">Próximo pago: <strong style="color:var(--text)">${c.proximoPago}</strong></span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Días restantes</div>
+          <div style="font-size:22px;font-weight:300;color:${c.diasHastaPago<=5?'var(--red)':c.diasHastaPago<=10?'var(--amber)':'var(--blue)'}">${c.diasHastaPago}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Disponible</div>
+          <div style="font-size:22px;font-weight:300;color:${c.disponible>=0?'var(--green)':'var(--red)'}">${fmtNum(c.disponible)}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Gasto/día</div>
+          <div style="font-size:22px;font-weight:300;color:var(--amber)">${fmtNum(Math.round(c.tasaDiaria))}</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Proyección</div>
+          <div style="font-size:22px;font-weight:300;color:${c.saldoProyectado>=0?'var(--blue)':'var(--red)'}">${fmtNum(Math.round(c.saldoProyectado))}</div>
+        </div>
+      </div>
+
+      <!-- Barra de progreso del ciclo -->
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:4px">
+          <span>Progreso del ciclo (${Math.round(c.pctCiclo)}% del tiempo)</span>
+          <span>${c.diasTranscurridos} de ${c.diasDelCiclo} días</span>
+        </div>
+        <div style="height:8px;background:var(--bg4);border-radius:4px;overflow:hidden;position:relative">
+          <div style="height:100%;width:${pctCicloBar}%;background:var(--blue);border-radius:4px;opacity:0.4"></div>
+          <div style="height:100%;width:${pctGastoBar}%;background:${colorGasto};border-radius:4px;position:absolute;top:0;left:0;transition:width .6s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:3px">
+          <span style="color:${colorGasto}">Gastado: ${Math.round(c.pctGastado)}% del ingreso</span>
+          <span>Gasto proyectado: ${fmtNum(Math.round(c.gastoProyectado))}</span>
+        </div>
+      </div>
+
+      <!-- Mensaje de alerta -->
+      <div style="padding:10px 14px;border-radius:8px;background:${bgNivel};border:1px solid ${borderNivel};font-size:13px;color:${colorNivel};line-height:1.5">
+        ${c.mensajeAlerta}
+      </div>
+    </div>`;
+}
 function calcularAlertas(){
   const alertas=[];
   const ing=S.ingresos.reduce((a,i)=>a+i.monto,0),gast=S.gastos.reduce((a,g)=>a+g.monto,0);
@@ -1577,6 +1740,15 @@ function calcularAlertas(){
   });
   const asp=S.perfil.asp||20,tasaReal=ing>0?(S.ahorros.reduce((a,s)=>a+s.monto,0)/ing)*100:0;
   if(ing>0&&tasaReal<asp*0.5)alertas.push({tipo:'info',icon:'💡',titulo:'Tasa de ahorro por debajo de tu meta',desc:`Tu tasa actual es ${Math.round(tasaReal)}% y tu meta es ${asp}%.`});
+
+  // Alerta de ciclo de pago
+  const ciclo = calcularCicloPago();
+  if(ciclo && ciclo.nivelAlerta === 'danger') {
+    alertas.unshift({tipo:'danger',icon:'💸',titulo:'Riesgo de quedarte sin dinero antes del pago',desc:ciclo.mensajeAlerta.replace('⚠ ','')});
+  } else if(ciclo && ciclo.nivelAlerta === 'warn') {
+    alertas.push({tipo:'warn',icon:'💸',titulo:'Ritmo de gasto elevado en este ciclo',desc:ciclo.mensajeAlerta});
+  }
+
   return alertas;
 }
 function actualizarAlertas(){
@@ -1595,7 +1767,7 @@ function renderAlertas(){
 // ── PERFIL ──
 function toggleHobby(el,h){el.classList.toggle('selected');if(!S.perfil.hobbies)S.perfil.hobbies=[];if(el.classList.contains('selected')){if(!S.perfil.hobbies.includes(h))S.perfil.hobbies.push(h);}else S.perfil.hobbies=S.perfil.hobbies.filter(x=>x!==h);}
 function savePerfil(){
-  S.perfil={nombre:getVal('pf-nombre'),edad:getVal('pf-edad'),ciudad:getVal('pf-ciudad'),civil:getVal('pf-civil'),dep:getNum('pf-dep'),divisa:getVal('pf-divisa'),cargo:getVal('pf-cargo'),sit:getVal('pf-sit'),acad:getVal('pf-acad'),asp:getNum('pf-asp'),riesgo:getVal('pf-riesgo'),mcp:getVal('pf-mcp'),mmp:getVal('pf-mmp'),mlp:getVal('pf-mlp'),hobbies:S.perfil.hobbies||[],hobOtros:getVal('pf-hob-otros'),contexto:getVal('pf-contexto')};
+  S.perfil={nombre:getVal('pf-nombre'),edad:getVal('pf-edad'),ciudad:getVal('pf-ciudad'),civil:getVal('pf-civil'),dep:getNum('pf-dep'),divisa:getVal('pf-divisa'),cargo:getVal('pf-cargo'),sit:getVal('pf-sit'),acad:getVal('pf-acad'),asp:getNum('pf-asp'),riesgo:getVal('pf-riesgo'),diaPago:getNum('pf-dia-pago'),mcp:getVal('pf-mcp'),mmp:getVal('pf-mmp'),mlp:getVal('pf-mlp'),hobbies:S.perfil.hobbies||[],hobOtros:getVal('pf-hob-otros'),contexto:getVal('pf-contexto')};
   updSym();actualizarResumen();scheduleAutosave();notify('Perfil guardado','ok');
 }
 function cargarPerfilUI(){
@@ -1603,7 +1775,7 @@ function cargarPerfilUI(){
   ['nombre','edad','ciudad'].forEach(f=>setVal('pf-'+f,p[f]));
   setVal('pf-civil',p.civil);setVal('pf-dep',p.dep);setVal('pf-divisa',p.divisa||'COP');
   setVal('pf-cargo',p.cargo);setVal('pf-sit',p.sit);setVal('pf-acad',p.acad);
-  setVal('pf-asp',p.asp);setVal('pf-riesgo',p.riesgo);
+  setVal('pf-asp',p.asp);setVal('pf-riesgo',p.riesgo);setVal('pf-dia-pago',p.diaPago);
   setVal('pf-mcp',p.mcp);setVal('pf-mmp',p.mmp);setVal('pf-mlp',p.mlp);
   setVal('pf-hob-otros',p.hobOtros);setVal('pf-contexto',p.contexto);
   document.querySelectorAll('#hobbies-container .perfil-tag').forEach(tag=>{
